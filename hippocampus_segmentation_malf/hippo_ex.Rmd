@@ -357,6 +357,8 @@ hippo = niftiarr(label,
                  label %in% hippo_inds)
 ```
 
+### Table the Accuracy
+
 Here we can vectorize the images (using `c()`) and run a tabulation.  The tabulation with `hippo`, `tab`, will result in a 2x2 table of true/false positives/negatives.  
 ```{r tab, eval = TRUE, cache = TRUE}
 ################################
@@ -366,6 +368,18 @@ tab = table(c(hippo), c(malfer))
 print(tab)
 ```
 
+### Dice Overlap
+
+From this, we can calculate the Dice Similarity Index (DSI) [@dice_measures_1945]:
+```{r dice, eval = TRUE, cache= TRUE}
+denom = (2 * tab[2, 2]) + 
+           tab[1, 2] + 
+           tab[2, 1]
+dice = (2 * tab[2, 2])/denom
+print(dice)
+```
+
+### "Wrongly" Labeled Voxels
 A table with the fully segmented target image will show us which labels the false positive voxels fall into.
 
 ```{r, eval = FALSE}
@@ -402,38 +416,50 @@ ortho_diff(img,
            roi = hippo, xyz = xyz)
 ```
 
+### Comparison of Volumes
+
+In the NIfTI format, each voxel has the same dimensions.  We can access the voxel dimensions using the `voxdim` function from `fslr`:
+
+```{r}
+vdim = voxdim(img)
+print(vdim)
+```
+
+These values are in millimeters (mm).  If we take the product, we get the volume of each voxel in mm$^3$:
+
+```{r}
+vres = prod(vdim)
+```
+
+We can divide this by $1000$ as there are $1000$ cubic millimeters in a cubic centimeter (cc) and a cubic centimeter is equivalent to a milliliter (mL), which is a commonly reported unit.
+
+```{r}
+cc = vres / 1000
+```
+
+Now, multiplying this by the number of voxels segmented in the manual and MALF segmentation, we can compare the volumes of the hippocampus (in mL):
+
+```{r}
+cc * sum(malfer)
+cc * sum(hippo)
+```
+
+As we can see, we may have biases in the location of the segmentation, but still be relatively accurate in the volume of the segmentation.  This is possible vice versa, but is somewhat less common in my experience.
+
+
 # Conclusions
 
+## What did we do/Insights
+In this tutorial, we show how to segment a structure of a target image from labeled template images using a multi-atlas label fusion approach.  We discuss the choices to be made in this overall approach.  We showed a fusion approach with a small subset of template images (`r n_imgs`) to show the overall approach, but more templates should be used in practice if available.  In @doshi2013multi, there seemed to increasing returns on up to 7 templates, but the results did not greatly change above that.  But again, this cutoff may be dependent on the problem or the structure as that was shown for whole brain Dice overlap scores.
 
+After segmentation, we can examine the segmentation visually  Moreover, if we have a gold standard, we can estimate the overlap or volume comparison.  If no gold standard exists, a rater study can be done.  This may take some time, but it's quicker and less likely friend-losing than asking for manual segmentations. 
 
+## But I want structure X/Y/Z!
+Nothing about this procedure was specific to the hippocampus.  If you wanted to perform the same process on another structure, you'd simply change the indices for the template.  Moreover, if you wanted to try to label the brain with all the values in the labeled template brains, you'd simply run the same code as above without creating a binary structure label in `lab_list` and would simply use the labeled data.
 
+The process of using the whole labeled image and then looking at a specific structure's volume may give you a different result than using the binary label image for that structure and running the process.  This can be due to averaging/voting of surrounding voxels.  This difference may be significant under different choices of registration, interpolation, and voting.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+## "Homework"
+Try the same process for the cerebellum: `cereb_inds = c(38:41, 71:73)` and see the performance.
 
 # Bibliography
