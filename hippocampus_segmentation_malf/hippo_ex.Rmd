@@ -21,7 +21,7 @@ get.fsl()
 
 
 # Introduction of Problem
-Many analyses focus on a specific region or set of regions in the brain.  These analyses can focus on a wide variety of statistics about these regions, such as the peak activation in the region, amount of atropy, or the volume of the region/structure.
+Many analyses focus on a specific region or set of regions in the brain.  These analyses can focus on a wide variety of statistics about these regions, such as the peak activation in the region, amount of atrophy, or the volume of the region/structure.
 
 We will be focusing on the volume of the region.  In this example, we will show how to take a T1-weighted image and segment the hippocampus.  We will be using an approach which I will be calling "Multi-Atlas Label Fusion" (MALF), but that is not really correct and in the literature, that means something slightly different.  See @wang2013multi for the true reference.  It may be better considered as "Multi-Atlas Segmentation with Label Voting".  Maybe we should say MALV, but I digress.
 
@@ -398,8 +398,8 @@ ortho_diff(img,
            roi = hippo, xyz = xyz)
 ```
 
-
 # Conclusions
+
 
 
 
