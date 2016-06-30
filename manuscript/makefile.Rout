@@ -1,0 +1,76 @@
+
+R version 3.1.2 (2014-10-31) -- "Pumpkin Helmet"
+Copyright (C) 2014 The R Foundation for Statistical Computing
+Platform: x86_64-apple-darwin13.4.0 (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+Revolution R Open 8.0.1 beta2
+The enhanced R distribution from Revolution Analytics
+Visit mran.revolutionanalytics.com/open for information
+about additional features and technical support options.
+
+Loading required package: colorout
+[Previously saved workspace restored]
+
+> library(knitr)
+> library(tools)
+> homedir = getwd()
+> sections = list.files(path = homedir, 
++                       full.names=TRUE, pattern="\\.Rmd$", 
++                       recursive=TRUE)
+> # rmds = sections[grep("md$", sections)]
+> # rnws = sections[grep("nw$", sections)]
+> 
+> for (isec in seq_along(sections)){
++   section = sections[isec]
++   folname = dirname(section)
++   setwd(folname)
++   knit(input=section)
++   if (grepl("nw$", section)){
++     sname = basename(section)
++     sname = gsub("\\.Rnw", "", sname)
++     system(sprintf("pdflatex %s", sname))
++     system(sprintf("bibtex %s", sname))
++     system(sprintf("pdflatex %s", sname))  
++     system(sprintf("pdflatex %s", sname))  
++   }
++   purl(input=section)
++ }
+
+
+processing file: /Users/johnmuschelli/Dropbox/neuroimagingforstatisticians/manuscript/chapter1.Rmd
+  |                                                                         |                                                                 |   0%  |                                                                         |.................................................................| 100%
+  ordinary text without R code
+
+
+output file: chapter1.md
+
+
+
+processing file: /Users/johnmuschelli/Dropbox/neuroimagingforstatisticians/manuscript/chapter1.Rmd
+  |                                                                         |                                                                 |   0%  |                                                                         |.................................................................| 100%
+output file: chapter1.R
+
+> 
+> setwd(homedir)
+> 
+> secs = basename(sections)
+> cat(secs, file = "Book.txt", sep="\n")
+> 
+> 
+> proc.time()
+   user  system elapsed 
+  0.317   0.034   0.343 

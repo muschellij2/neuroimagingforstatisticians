@@ -1,0 +1,15 @@
+---
+title: "Hippocampus Segmentation Using MALF"
+author: "John Muschelli"
+date: "June 30, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction of Problem
+Many analyses focus on a specific region or set of regions in the brain.  These analyses can focus on a wide variety of statistics about these regions, such as the peak activation in the region, amount of atropy, or the volume of the region/structure.
+
+We will be focusing on the volume of the region.  In this example, we will show how to take a T1-weighted image and segment the hippocampus.  We will be using an approach generally described 

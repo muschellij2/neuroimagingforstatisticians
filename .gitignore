@@ -1,0 +1,17 @@
+# History files
+.Rhistory
+
+# Example code in package build process
+*-Ex.R
+
+# R data files from past sessions
+.Rdata
+
+# RStudio files
+.Rproj.user/
+
+manuscript/structural_talk/*.nii.gz
+manuscript/structural_talk/Neuroimaging_in_R_cache/html/*
+
+starting_out/index_cache/*
+.Rproj.user
