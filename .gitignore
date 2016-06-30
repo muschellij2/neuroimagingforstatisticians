@@ -18,3 +18,4 @@ starting_out/index_cache/*
 
 hippocampus_segmentation_malf/1000_3.nii.gz
 hippocampus_segmentation_malf/hippo_ex_cache/*
+hippocampus_segmentation_malf/*.nii.gz
