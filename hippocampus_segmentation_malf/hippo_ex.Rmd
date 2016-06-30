@@ -20,6 +20,8 @@ get.fsl()
 ```
 
 
+All the code for this is located at [https://github.com/muschellij2/neuroimagingforstatisticians/hippocampus_segmentation_malf](https://github.com/muschellij2/neuroimagingforstatisticians/hippocampus_segmentation_malf).  The `R` code for actually running this (on the cluster) is located in file `example_hippocampus_seg.R`.
+
 # Introduction of Problem
 Many analyses focus on a specific region or set of regions in the brain.  These analyses can focus on a wide variety of statistics about these regions, such as the peak activation in the region, amount of atrophy, or the volume of the region/structure.
 
@@ -67,6 +69,8 @@ In the MALF arena, combining labels is where a lot of the "special sauce" is.  A
 #### Simple Voting
 The way we will be combining labels is one of the simplest way possible [@rohlfing2003expectation]: simple voting.  After the transformation and nearest neighbor interpolator, each voxel will have a label from each template image.  For each voxel, we will simple take the label with the highest number of votes.  If there are ties, we'll pick an (arbitrary) rule.
 
+#### Better Voting
+
 Also, so you are aware, there are also approaches referred to STAPLE: Simultaneous truth and performance level estimation.  These approaches, as well as the true MALF, use weighting schemes [@wang2013multi] for voting or expectation-maximization techniques [@warfield2004simultaneous, @akhondi2014logarithmic] to combine the labels. 
 
 These weighting techniques may do much better than the simple voting we are shown here, but I (John) have not implemented them.  
@@ -99,7 +103,7 @@ ortho2(orig_img, add.orient = FALSE)
 
 If you want to change them, see the `fslswapdim` documentation from the `fslr` package.
 
-```{r reor_img, eval = TRUE, cache=TRUE}
+```{r reor_img, eval = TRUE, cache=TRUE, message = FALSE}
 reor_img = fslswapdim("1000_3.nii.gz", a = "RL", b = "PA", c = "IS")
 ortho2(reor_img)
 ```
