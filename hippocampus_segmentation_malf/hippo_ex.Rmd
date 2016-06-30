@@ -1,0 +1,435 @@
+---
+title: "Hippocampus Segmentation Using MALF"
+author: "John Muschelli"
+date: "June 30, 2016"
+output: html_document
+bibliography: hippo_ex.bib
+---
+
+```{r setup, include=FALSE, message= FALSE}
+knitr::opts_chunk$set(echo = TRUE, 
+                      comment = "")
+library(RefManageR)
+library(knitcitations)
+bib <- ReadBib('hippo_ex.bib')
+x = sapply(bib, citep)
+library(fslr)
+library(extrantsr)
+library(plyr)
+get.fsl()
+```
+
+
+# Introduction of Problem
+Many analyses focus on a specific region or set of regions in the brain.  These analyses can focus on a wide variety of statistics about these regions, such as the peak activation in the region, amount of atropy, or the volume of the region/structure.
+
+We will be focusing on the volume of the region.  In this example, we will show how to take a T1-weighted image and segment the hippocampus.  We will be using an approach which I will be calling "Multi-Atlas Label Fusion" (MALF), but that is not really correct and in the literature, that means something slightly different.  See @wang2013multi for the true reference.  It may be better considered as "Multi-Atlas Segmentation with Label Voting".  Maybe we should say MALV, but I digress.
+
+
+
+# Approach of MALF
+
+Overall, however, multi-atlas approaches generally work as follows:
+
+1.  Have a bunch of images with manual/gold standard segmentations/segmentations you trust.   We will refer to these images as template images.  These are usually of the same imaging modality/sequence that you want to segment (called the target image) in your problem (T1-weighted here). 
+2.  Register these template images to the target image.  This can be using a linear (Rigid, Affine) or non-linear.  
+3.  Apply the transformation to the segmentation/label image.  You may need to be very careful about the interpolation done after the transformation.  Now all labels are in the target image's space (target space).
+4.  Combine the labels in the target space to get a final segmentation, either fuzzy (probabilities) or hard (binary).
+5.  Compute statistics/summaries, go wild.
+
+## Choices for MALF
+
+There are many choices to get a good final segmentation.  
+
+1.  which registration do you use?
+2.  Which interpolator?
+3.  How do you combine the labels to get the final segmentation?
+
+In the literature, you can think of changing one (or all) of these components and getting a new (and maybe a better/worse) algorithm.  
+
+### Registration 
+With respect to registration, almost all that I see use non-linear registration.  Examples of non-linear registrations: FNIRT [@andersson2008fnirt] from FSL, SyN [@avants_symmetric_2008] from ANTs, DRAMMS [@ou2011dramms] from SBIA group at Penn (https://www.cbica.upenn.edu/sbia/software/dramms/).  We will be focusing on SyN here as it's implemented in ANTsR.
+
+
+### Interpolation 
+In many cases, a simple nearest neighbor interpolation is used.  This is nice as the resulting labels in target space will not be incorrectly averaged.  For example, a label image (in template space) may have values 1 to 100, but these values are arbitrary and give you the "same" segmentation if they were shuffled as long as you knew which labels moved where.  
+
+Let's say after transformation, a voxel is surrounded by the values 2 and 3.  If you used a linear or sinc interpolation, these values would be averaged to something like 2.65.  How do you assign the label now?  
+
+Now, let's shuffle the segmentation and the 2's stay the same, but the 3's were assigned to 30.  The average now may be something like 8.45.  Hopefully it's clear how using an "averaging" interpolator can cause problems.
+
+We will use a nearest neighbor interpolator here, but there is a "MultiLabel" interpolator available in the ANTsR registration routines.
+
+### Combining Labels
+
+In the MALF arena, combining labels is where a lot of the "special sauce" is.  Assuming your registration is perfect (never!), then you can combine the labels from many registered label images in infinite ways.
+
+#### Simple Voting
+The way we will be combining labels is one of the simplest way possible [@rohlfing2003expectation]: simple voting.  After the transformation and nearest neighbor interpolator, each voxel will have a label from each template image.  For each voxel, we will simple take the label with the highest number of votes.  If there are ties, we'll pick an (arbitrary) rule.
+
+Also, so you are aware, there are also approaches referred to STAPLE: Simultaneous truth and performance level estimation.  These approaches, as well as the true MALF, use weighting schemes [@wang2013multi] for voting or expectation-maximization techniques [@warfield2004simultaneous, @akhondi2014logarithmic] to combine the labels. 
+
+These weighting techniques may do much better than the simple voting we are shown here, but I (John) have not implemented them.  
+
+Either way, let's get segmenting!
+
+# Data Used
+Getting "gold standard" templates of a structure is hard.  It takes time and is pain-staking work and you'll lose friends trying to get people to do it.  So let's use someone else's.  The data come from the "MICCAI 2012 Grand Challenge on Multi-Atlas Labeling" located at [https://masi.vuse.vanderbilt.edu/workshop2012/index.php/Challenge_Details](https://masi.vuse.vanderbilt.edu/workshop2012/index.php/Challenge_Details).  You must register to receive the data.   You should download the `MICCAI2012_CompleteRelease_v2.tar.gz` if you want the labeled testing images (we do).
+
+## Tarball Structure
+After decompressing the tarball, we should have folders:
+
+* `testing-images` - testing set T1-weighted images (have `_3.nii.gz` suffix)
+* `training-images` - training set T1-weighted images (have `_3.nii.gz` suffix)
+* `testing-labels` - labeled segmentations for testing set (have `_glm` suffix)
+* `training-labels` - training set T1-weighted images (have `_glm` suffix)
+
+Note, the orientation for the images (and corresponding labels) is a bit off, but that is not relevant for our segmentation.   
+
+```{r orig_img_show, eval = FALSE}
+library(fslr)
+orig_img = readnii("1000_3.nii.gz")
+ortho2(orig_img)
+```
+
+```{r orig_img, eval = TRUE, cache=TRUE, echo = FALSE}
+orig_img = readnii("1000_3.nii.gz")
+ortho2(orig_img, add.orient = FALSE)
+```
+
+If you want to change them, see the `fslswapdim` documentation from the `fslr` package.
+
+```{r reor_img, eval = TRUE, cache=TRUE}
+reor_img = fslswapdim("1000_3.nii.gz", a = "RL", b = "PA", c = "IS")
+ortho2(reor_img)
+```
+
+## Label Information
+The labels/codebook for what each value of of the labeled image correspond to are located at [https://masi.vuse.vanderbilt.edu/workshop2012/images/e/e6/MICCAI-Challenge-2012-Label-Information.xlsx](https://masi.vuse.vanderbilt.edu/workshop2012/images/e/e6/MICCAI-Challenge-2012-Label-Information.xlsx).  Note the statement from the challenge details:
+
+```
+We only compared against labels that appeared consistently across all of the datasets. As a result, we ignored some of the labels during the calculation of the results. In MATLAB notation, the label numbers that we ignored are:
+
+ignore_labels = [1:3, 5:10, 12:22, 24:29, 33:34, 42:43, 53:54, 63:68, 70, 74, 80:99, 110:111, 126:127, 130:131, 158:159, 188:189];
+```
+
+We are not using these labels for hippocampus segmentation so we don't have to worry about it.  
+
+# Code 
+
+## Packages and Setting up data directories
+The package that contains the `malf` function is `extrantsr`, located on GitHub [https://github.com/muschellij2/extrantsr/](https://github.com/muschellij2/extrantsr/).   You can install using `devtools`:
+
+```{r, eval = FALSE}
+devtools::install_github("muschellij2/extrantsr")
+```
+
+The below code is designed for both the JHU and Penn clusters.  
+
+```{r, eval = FALSE}
+library(fslr)
+library(extrantsr)
+library(plyr)
+hn = system("hostname", 
+    intern = TRUE)
+rootdir = NULL
+if (grepl("compute", hn)){
+    rootdir = file.path(
+        "/dcl01/smart/data", 
+        "structural", 
+        "Templates")    
+}
+if (grepl("taki", hn) |
+    grepl("scisub", hn)){
+    rootdir = file.path("/project", 
+        "taki2", 
+        "Templates")
+}
+datadir = file.path(rootdir, 
+                    paste0("MICCAI-2012-Multi-", 
+                           "Atlas-Challenge-Data"))
+```
+
+The `rootdir` is where a sub-folder is `MICCAI-2012-Multi-Atlas-Challenge-Data`, which is the `datadir`.  
+
+From the original tarball, we have done a few things:
+
+* Copied all images and labels into a folder, called `all-images`
+* Skull-stripped the images using the label image `> 0`:
+    * `fslmask(file = image, mask = label_image, outfile = ss_image)`
+
+
+```{r, eval = FALSE}
+template_dir = file.path(datadir, "all-images")
+```
+
+## Getting the data together
+
+We will first get all the image files from the `all-images` folder:
+```{r, eval = FALSE}
+#######################################
+# Just getting the template data together
+#######################################
+niis = list.files(
+    path = template_dir,
+    pattern = ".nii.gz", 
+    full.names = TRUE)
+```
+
+We will select only the original images (ending in `_3.nii.gz`), so that we can make a `data.frame` with 3 columns, the image name, the skull-stripped images and the label image.
+
+```{r, eval = FALSE}
+bases = nii.stub(niis, bn = TRUE)
+templates = niis[grep("_3$", bases)]
+
+df = data.frame(
+    template = templates,
+    stringsAsFactors = FALSE)
+df$ss_template = paste0(
+    nii.stub(df$template),
+    "_SS.nii.gz")
+df$label = paste0(
+    nii.stub(df$template),
+    "_glm.nii.gz")
+stopifnot(all(file.exists(unlist(df))))
+```
+
+## Choose how many templates
+```{r, eval = TRUE, echo = FALSE}
+n_imgs = 5
+```
+
+```{r, eval = FALSE}
+n_imgs = 5
+#######################################
+# Just keeping a few for demonstration
+# More templates = more computation, but
+# More templates = better segmenation
+#######################################
+xdf = df
+df = df[1:n_imgs,]
+```
+
+We will keep the first `r n_imgs` images to use for the segmentation.  The more templates you use for registration, the likely should converge to a better segmentation, but this will take more time.  Each registration can take anywhere from 1-5 minutes. 
+
+Here we will get the label values for subsetting the image. 
+
+```{r, eval = TRUE}
+hippo_inds = c(47:48, 170:171)
+```
+
+## Reading in the label data
+
+Here we will do an `apply` statement over the label images, read them into `R`, then force the image into a binary image where the image is $1$ if the label was in the hippocampus labels and $0$ otherwise.  
+
+```{r, eval = FALSE}
+#######################################
+# Making a list of labeled files 
+# 47 - Right hippocampus
+# 48 - left hippocampus
+# 170 Right PHG   parahippocampal gyrus
+# 171 Left PHG   parahippocampal gyrus
+#######################################
+lab_list = llply(
+  df$label,
+  function(x) {
+    img = readnii(x)
+    hippo = niftiarr(img, 
+                     # img %in% c(38:41, 71:73)
+                     img %in% hippo_inds
+    )
+    hippo
+  }, .progress = "text")
+```
+
+I use the `llply` function instead of `lapply` so I can use the `.progress = "text"` option to show a progress bar. 
+
+## Reading in the skull-stripped data
+
+Here we will read in the skull-stripped images, again with a progress bar.
+
+```{r, eval = FALSE}
+temp_list = llply(df$ss_template, 
+    readnii,
+    .progress = "text")
+```
+
+### Why skull stripped?
+Most non-linear registrations use an affine registration as a first step.  When using affine registrations, there is a global scaling factor, which may try to match skulls or extracranial tissue if the skull is still on, which is not desirable.  Therefore, we will use the skull-stripped templates and register them to a skull-stripped target image.
+
+There are many tools for skull stripping, including the Brain Extraction Tool (BET).  Moreover, registration using skull-on images can be done, and MALF can be applied using brain masks as in Multi-Atlas Skull Stripping (MASS) [@doshi2013multi] and software can be located here: [https://www.cbica.upenn.edu/sbia/software/MASS/index.html](https://www.cbica.upenn.edu/sbia/software/MASS/index.html).  
+
+## Output
+
+Here we will run the hippocampal segmentation on the image in row $6$.  This code simply creates objects for the input, output, and labeled files.  Because this image has a hippocampus segmentation, we can see how well the segmentation did.
+
+
+```{r, eval = FALSE}
+################################
+# Let's try an image to test
+################################
+ind = 6
+infile = xdf$ss_template[ind]
+label_file = xdf$label[ind]
+outfile = file.path("~",
+                    paste0(nii.stub(infile, bn = TRUE),
+                           "_Labeled.nii.gz"))
+```         
+
+## Running MALF!
+
+Below, we have the code to run `malf`.  The `if` statement simply provides a cached version -- if the segmentation was already run, then we can simply load the output file, otherwise run `malf`.  Below I will breakdown the arguments of `malf`:
+
+```{r, eval = FALSE}
+################################
+# Run multi-atlas label fusion (malf)
+################################
+if (file.exists(outfile)){
+  malfer = readnii(outfile)
+} else {
+  malfer = malf(
+    infile = infile,
+    template.images = temp_list,
+    template.structs = lab_list,
+    outfile = outfile,
+    typeofTransform = "SyN",
+    interpolator = "NearestNeighbor",
+    keep_images = FALSE)    
+}
+```
+
+In the `malf` function, we set the following arguments:
+
+* `infile` filename (or `antsImage` or `nifti`) to be segmented
+* `outfile` filename for output
+* `template.images` - character vector or list of image objects of T1-weighted images (or whatever modality).
+* `template.structs` - character vector or list of image objects of labeled structures
+* `typeofTransform` - type of transformed used
+* `interpolator` - type of interpolation done
+* `keep_images = FALSE` don't keep the intermediary registered images.  If this is `TRUE`, you must provide an `outprefix`, which is a prefix for the output files.
+
+By default, the `func` argument is `func = "mode"`, which means simple voting.  The output `malfer` is a `nifti` object.
+
+
+# Results
+
+## Comparison to Gold Standard with Tables
+
+```{r img_fnames, eval = TRUE, echo = FALSE}
+infile = "1005_3_SS.nii.gz"
+label_file = "1005_3_glm.nii.gz"
+outfile = "1005_3_SS_Labeled.nii.gz"
+```
+
+For the target image we will read in the T1-weighted image into `img`, the fully-labeled brain into `label` and then subset that image to `hippo`.  `hippo` is a binary mask where $1$ indicates the hippocampus.
+
+```{r, eval = FALSE}
+################################
+# read in the images
+################################
+img = readnii(infile)
+label = readnii(label_file)
+hippo = niftiarr(label, 
+                 label %in% hippo_inds)
+```
+
+```{r, echo = FALSE, message = FALSE, cache = TRUE}
+################################
+# read in the images
+################################
+malfer = fslswapdim(outfile, 
+                 a = "RL",
+                 b = "PA",
+                 c = "IS")
+img = fslswapdim(infile, 
+                 a = "RL",
+                 b = "PA",
+                 c = "IS")
+label = fslswapdim(label_file, 
+                 a = "RL",
+                 b = "PA",
+                 c = "IS")
+hippo = niftiarr(label, 
+                 label %in% hippo_inds)
+```
+
+Here we can vectorize the images (using `c()`) and run a tabulation.  The tabulation with `hippo`, `tab`, will result in a 2x2 table of true/false positives/negatives.  
+```{r tab, eval = TRUE, cache = TRUE}
+################################
+# Compare to gold standard
+################################
+tab = table(c(hippo), c(malfer))
+print(tab)
+```
+
+A table with the fully segmented target image will show us which labels the false positive voxels fall into.
+
+```{r, eval = FALSE}
+lab_tab = table(c(label), c(malfer))
+```
+
+```{r lab_tab, eval = TRUE, echo = FALSE, cache= TRUE}
+lab_tab = table(c(label), c(malfer))
+rs = lab_tab[, "1"]
+lab_tab = lab_tab[rs > 0,]
+rs = lab_tab[, "1"]
+lab_tab = lab_tab[order(rs, decreasing = TRUE),]
+print(lab_tab)
+```
+
+## Compare the Image Outputs
+
+Let's look at the results.  We can do this a few ways.  Here we will get the center of the labeled hippocampus using the `xyz` function
+```{r xyz}
+################################
+# get center (for plotting)
+################################
+xyz = xyz(hippo)
+```
+
+This doesn't do anything to the data but allows us to center our orthographic representation using those coordinates to see the difference of the predicted segmentation and the true segmentation.  We will use the `ortho_diff` function to show the true positives, false positives, and false negatives:
+
+```{r, message=FALSE, warning=FALSE, cache = TRUE}
+################################
+# Show differences
+################################
+ortho_diff(img, 
+           pred = malfer, 
+           roi = hippo, xyz = xyz)
+```
+
+
+# Conclusions
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Bibliography

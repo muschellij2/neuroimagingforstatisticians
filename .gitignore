@@ -15,3 +15,6 @@ manuscript/structural_talk/Neuroimaging_in_R_cache/html/*
 
 starting_out/index_cache/*
 .Rproj.user
+
+hippocampus_segmentation_malf/1000_3.nii.gz
+hippocampus_segmentation_malf/hippo_ex_cache/*
